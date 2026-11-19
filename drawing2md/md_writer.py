@@ -325,11 +325,18 @@ def iter_dxf_markdown(data: dict) -> Iterator[str]:
     # Dimensions --------------------------------------------------------------
     yield from heading(2, f"Dimensions ({len(all_dims)})")
     if all_dims:
-        yield from table(["where", "handle", "type", "layer", "measurement", "displayed text", "override",
-                          "dimstyle", "points"],
+        yield ("Measurement is in drawing units (degrees for angular dimensions). Displayed text = measurement x DIMLFAC, rounded "
+               "(DIMRND/DIMDEC), with R/Ø prefix and override text applied; "
+               "\"(computed)\" means the dimension had no rendered block and the text was rebuilt.")
+        yield ""
+        yield from table(["where", "handle", "type", "layer", "measurement", "DIMLFAC", "displayed text",
+                          "override", "dimstyle", "points"],
                          [(w, d["handle"], d["dimtype"], d["layer"],
                            d["measurement"] if not isinstance(d["measurement"], list) else p(d["measurement"]),
-                           d.get("displayed_text", ""), d.get("override_text", ""), d.get("dimstyle", ""),
+                           d.get("dimlfac", ""),
+                           d.get("displayed_text", "") + (" (computed)" if d.get("displayed_text_source") == "computed"
+                                                          and d.get("displayed_text") else ""),
+                           d.get("override_text", ""), d.get("dimstyle", ""),
                            "; ".join(f"{k}={p(v)}" for k, v in d["points"].items()))
                           for w, d in all_dims])
     else:

@@ -19,6 +19,11 @@ def make_sample_dxf(path) -> str:
     doc.layers.add("DIMS", color=3)
     doc.layers.add("HIDDEN", color=4).off()
     doc.layers.add("FROZEN", color=5).freeze()
+    # ezdxf's built-in EZ* dimstyles are for metre drawings shown in cm (DIMLFAC = 100).
+    # This sample is in millimetres, so dimensions must show the measured value as-is.
+    for style in doc.dimstyles:
+        if style.dxf.name.upper().startswith("EZ"):
+            style.dxf.dimlfac = 1.0
     msp = doc.modelspace()
 
     msp.add_line((0, 0), (1000.12345, 0), dxfattribs={"layer": "WALLS"})
@@ -63,6 +68,8 @@ def make_sample_dxf(path) -> str:
                         dxfattribs={"layer": "DIMS"}).render()
     msp.add_radius_dim(center=(500, 500), radius=250, angle=45,
                        dxfattribs={"layer": "DIMS"}).render()
+    msp.add_diameter_dim(center=(500, 500), radius=250, angle=135,
+                         dxfattribs={"layer": "DIMS"}).render()
     msp.add_linear_dim(base=(0, -200), p1=(0, 0), p2=(500, 0), text="TYP.",
                        dxfattribs={"layer": "DIMS"}).render()
 
