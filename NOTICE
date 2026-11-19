@@ -1,0 +1,11 @@
+drawing2md
+Copyright 2026 Ahmed Ali
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It uses, but does not bundle, these third-party components:
+- ezdxf (MIT License)
+- PyMuPDF (GNU AGPL v3 or Artifex commercial license)
+- pytesseract (Apache License 2.0), optional
+- ODA File Converter (free, proprietary, Open Design Alliance), optional, installed separately
+- Tesseract OCR (Apache License 2.0), optional, installed separately

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drawing2md"
+version = "0.1.0"
+description = "Convert PDF, DXF and DWG drawings into Markdown - geometry, blocks, attributes, text, dimensions, layers, tables, images. 100% offline, no AI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Ahmed Ali" }]
+keywords = ["dxf", "dwg", "pdf", "cad", "markdown", "ezdxf", "pymupdf", "drawing", "converter"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Manufacturing",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "ezdxf>=1.1",
+    "PyMuPDF>=1.24",
+]
+
+[project.optional-dependencies]
+ocr = ["pytesseract>=0.3.10", "Pillow>=9"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+drawing2md = "drawing2md.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ahmedalisteel-star/drawing2md"
+Issues = "https://github.com/ahmedalisteel-star/drawing2md/issues"
+
+[tool.setuptools]
+packages = ["drawing2md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
