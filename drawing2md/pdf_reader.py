@@ -182,12 +182,29 @@ def _paths(page: Any, cap: int | None, stats: Counter) -> tuple[list, int]:
     return rows, truncated
 
 
+def _drop_empty(cells: list[list[str]]) -> list[list[str]]:
+    """Remove rows and columns that are completely empty.
+
+    Newer PyMuPDF releases (layout-based table finder) can add blank spacer
+    columns between the real ones; this gives the same table on every version.
+    """
+    rows = [row for row in cells if any(c for c in row)]
+    if not rows:
+        return []
+    width = max(len(row) for row in rows)
+    rows = [row + [""] * (width - len(row)) for row in rows]
+    keep = [j for j in range(width) if any(row[j] for row in rows)]
+    return [[row[j] for j in keep] for row in rows]
+
+
 def _tables(page: Any) -> list[dict[str, Any]]:
     out = []
     found = page.find_tables()
     for tno, tab in enumerate(found.tables):
         rows = tab.extract()
-        clean = [[("" if c is None else str(c).strip()) for c in row] for row in rows]
+        clean = _drop_empty([[("" if c is None else str(c).strip()) for c in row] for row in rows])
+        if not clean:
+            continue
         out.append({"index": tno, "bbox": bbox(tab.bbox), "rows": len(clean),
                     "cols": max((len(rw) for rw in clean), default=0), "cells": clean})
     return out

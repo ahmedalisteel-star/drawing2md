@@ -86,3 +86,9 @@ def test_markdown_render(sample_pdf):
     assert "| MARK | SECTION | QTY |" in md
     assert "| B1 | HEA200 | 4 |" in md
     json.dumps(data)
+
+
+def test_empty_spacer_columns_removed():
+    cells = [["MARK", "", "SECTION", "", "QTY"], ["", "", "", "", ""], ["B1", "", "HEA200", "", "4"]]
+    assert pdf_reader._drop_empty(cells) == [["MARK", "SECTION", "QTY"], ["B1", "HEA200", "4"]]
+    assert pdf_reader._drop_empty([["", ""], ["", ""]]) == []
