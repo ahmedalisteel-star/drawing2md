@@ -7,8 +7,11 @@ single broken entity is logged and skipped instead of stopping the run.
 from __future__ import annotations
 
 import logging
+import math
 import os
+import re
 from collections import Counter, defaultdict
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Iterable
 
 import ezdxf
@@ -354,17 +357,30 @@ def dimension_record(e: Any) -> dict[str, Any]:
         kind = "large radial (jogged)"
     else:
         kind = DIMTYPE_NAMES.get(dimtype, str(dimtype))
+    angular = kind.startswith("angular")
     measurement: Any = _get(e, "actual_measurement")
+    if measurement is not None and angular:
+        measurement = math.degrees(measurement)  # group 42 stores angles in radians
     if measurement is None:
         try:
-            measurement = e.get_measurement()
+            measurement = e.get_measurement()  # ezdxf returns degrees for angular dims
         except Exception:
             measurement = None
     if measurement is not None:
         measurement = plain(measurement)
-    override = _get(e, "text", "")
-    rec.update(dimtype=kind, measurement=measurement, override_text=override,
-               displayed_text=_dimension_displayed_text(e), dimstyle=_get(e, "dimstyle", ""))
+    override = _get(e, "text", "") or ""
+    style = _effective_dimstyle(e)
+    computed = format_dimension_text(kind, measurement, override, style)
+    drawn = _dimension_displayed_text(e)
+    rec.update(dimtype=kind, measurement=measurement,
+               measurement_unit="degrees" if angular else "drawing units", override_text=override,
+               # what the drawing shows: the rendered block text when present,
+               # otherwise the text rebuilt from the dimstyle rules
+               displayed_text=drawn if drawn else computed,
+               displayed_text_source="block" if drawn else "computed",
+               computed_text=computed,
+               dimstyle=_get(e, "dimstyle", ""),
+               dimlfac=r(style["dimlfac"]), dimrnd=r(style["dimrnd"]), dimdec=style["dimdec"])
     points = {}
     for name in ("defpoint", "defpoint2", "defpoint3", "defpoint4", "defpoint5", "text_midpoint"):
         v = _get(e, name)
@@ -377,6 +393,138 @@ def dimension_record(e: Any) -> dict[str, Any]:
     return rec
 
 
+SPECIAL_CODES = {"%%c": "Ø", "%%C": "Ø", "%%d": "°", "%%D": "°",
+                 "%%p": "±", "%%P": "±"}
+
+# AutoCAD defaults, used when neither the dimension nor its dimstyle sets a value
+DIMSTYLE_DEFAULTS = {"dimlfac": 1.0, "dimrnd": 0.0, "dimdec": 4, "dimzin": 0, "dimdsep": 46,
+                     "dimpost": "", "dimadec": 0, "dimazin": 0, "dimapost": ""}
+
+
+_UNICODE_ESCAPE = re.compile(r"\\U\+([0-9A-Fa-f]{4})")
+_LINE_BREAK_SPACES = re.compile(r"[ \t]*\n[ \t]*")
+
+
+def _special_codes(text: str) -> str:
+    """Decode %%c/%%d/%%p and backslash-U+XXXX escapes left by plain-text conversion."""
+    for code, char in SPECIAL_CODES.items():
+        text = text.replace(code, char)
+    return _UNICODE_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), text)
+
+
+def _mtext_plain(raw: str) -> str:
+    """MTEXT -> plain text; the backslash-X code (text above/below the dimension line)
+    becomes a line break."""
+    raw = raw.replace("\\X", "\\P")
+    try:
+        from ezdxf.tools.text import plain_mtext
+        text = plain_mtext(raw, split=False)
+    except Exception:
+        text = raw
+    return _LINE_BREAK_SPACES.sub("\n", text)
+
+
+def _effective_dimstyle(e: Any) -> dict[str, Any]:
+    """Dimstyle values for one DIMENSION, including per-entity overrides (XDATA)."""
+    values = dict(DIMSTYLE_DEFAULTS)
+    try:
+        ov = e.override()  # DimStyleOverride: entity override -> dimstyle
+        getter = ov.get
+    except Exception:
+        style = None
+        try:
+            style = e.doc.dimstyles.get(_get(e, "dimstyle", "Standard"))
+        except Exception:
+            pass
+        getter = (lambda k, d=None: style.dxf.get(k, d)) if style is not None else (lambda k, d=None: d)
+    for key, default in DIMSTYLE_DEFAULTS.items():
+        try:
+            v = getter(key, None)
+        except Exception:
+            v = None
+        if v is not None:
+            values[key] = v
+    return values
+
+
+def _half_up(value: float, quantum: str) -> Decimal:
+    """Round half away from zero like AutoCAD (Python's round() is half-to-even)."""
+    return Decimal(repr(float(value))).quantize(Decimal(quantum), rounding=ROUND_HALF_UP)
+
+
+def _round_to(value: float, step: float) -> float:
+    """DIMRND: round to the nearest multiple of step."""
+    if step and step > 0:
+        return float(_half_up(value / step, "1")) * step
+    return value
+
+
+def _format_number(value: float, decimals: int, dimzin: int, dsep: int) -> str:
+    decimals = max(0, int(decimals))
+    s = format(_half_up(value, "1" if decimals == 0 else "0." + "0" * decimals), "f")
+    if "." in s:
+        if dimzin & 8:  # suppress trailing zeros
+            s = s.rstrip("0").rstrip(".")
+        if dimzin & 4:  # suppress leading zero: 0.5 -> .5
+            if s.startswith("0."):
+                s = s[1:]
+            elif s.startswith("-0."):
+                s = "-" + s[2:]
+    if s in ("-0", "-", ""):
+        s = "0"
+    sep = chr(int(dsep)) if dsep else "."
+    return s.replace(".", sep) if sep != "." else s
+
+
+def _apply_post(core: str, post: str, prefix: str) -> str:
+    """Apply DIMPOST/DIMAPOST. 'Prefix<>Suffix' or a plain suffix."""
+    post = post or ""
+    if "<>" in post:
+        before, after = post.split("<>", 1)
+        # A DIMPOST prefix replaces the default R / diameter prefix (AutoCAD behaviour).
+        return f"{before or prefix}{core}{after}"
+    return f"{prefix}{core}{post}"
+
+
+def format_dimension_text(kind: str, measurement: Any, override: str,
+                          style: dict[str, Any]) -> str:
+    """Rebuild the dimension text the way AutoCAD composes it.
+
+    measurement is in drawing units (degrees for angular dimensions).
+    Linear values are multiplied by DIMLFAC, rounded to DIMRND, formatted with
+    DIMDEC/DIMZIN/DIMDSEP, prefixed with R or the diameter sign, and DIMPOST is
+    applied. The override text then replaces it: "" or "<>" -> measured text,
+    "<>" inside text -> substituted, a single space -> text suppressed.
+    """
+    measured = ""
+    if isinstance(measurement, (int, float)):
+        if kind.startswith("angular"):
+            dec = style.get("dimadec", 0)
+            if dec is None or int(dec) < 0:
+                dec = style.get("dimdec", 0)
+            azin = int(style.get("dimazin", 0) or 0)  # 1 = leading, 2 = trailing zeros
+            zin = (4 if azin & 1 else 0) | (8 if azin & 2 else 0)
+            core = _format_number(float(measurement), dec, zin, style.get("dimdsep", 46)) + "°"
+            measured = _apply_post(core, style.get("dimapost", ""), "")
+        else:
+            lfac = abs(float(style.get("dimlfac", 1.0) or 1.0))
+            value = _round_to(float(measurement) * lfac, float(style.get("dimrnd", 0.0) or 0.0))
+            core = _format_number(value, style.get("dimdec", 4), int(style.get("dimzin", 0) or 0),
+                                  style.get("dimdsep", 46))
+            prefix = {"radius": "R", "diameter": "Ø", "large radial (jogged)": "R"}.get(kind, "")
+            measured = _apply_post(core, style.get("dimpost", ""), prefix)
+
+    if override == " ":  # AutoCAD: single space suppresses the text
+        return ""
+    if override in ("", "<>"):
+        text = measured
+    elif "<>" in override:
+        text = override.replace("<>", measured)
+    else:
+        text = override
+    return _special_codes(_mtext_plain(text)).strip()
+
+
 def _dimension_displayed_text(e: Any) -> str:
     """Text actually drawn by the dimension (taken from its geometry block)."""
     try:
@@ -386,10 +534,10 @@ def _dimension_displayed_text(e: Any) -> str:
         parts = []
         for sub in block:
             if sub.dxftype() == "MTEXT":
-                parts.append(sub.plain_text(split=False))
+                parts.append(_mtext_plain(sub.text))
             elif sub.dxftype() == "TEXT":
                 parts.append(sub.plain_text())
-        return " ".join(p.strip() for p in parts if p.strip())
+        return _special_codes("\n".join(p.strip() for p in parts if p.strip()))
     except Exception:
         return ""
 

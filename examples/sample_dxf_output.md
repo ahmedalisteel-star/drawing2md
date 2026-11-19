@@ -2,23 +2,23 @@
 
 ## Summary
 
-- **Source:** DXF file `sample_drawing.dxf` (82,314 bytes)
+- **Source:** DXF file `sample_drawing.dxf` (83,818 bytes)
 - **DXF version:** AC1032 (R2018)
 - **Units:** Millimeters ($INSUNITS = 4)
 - **Extents (computed):** min (-40.3, -200.375) max (2400, 1249.26, 10) -> size 2440.3 x 1449.635
 - **Layers:** 7
-- **Layouts:** 2 (Model: 19 entities, Layout1: 2 entities)
-- **Entities (all layouts):** 21
-- **Top entity types:** DIMENSION 4, INSERT 2, TEXT 2, LINE 1, CIRCLE 1, ARC 1, LWPOLYLINE 1, POLYLINE 1, ELLIPSE 1, SPLINE 1
-- **Block definitions:** 5 (+4 dimension blocks) | **Inserts:** 2 | **Attributes:** 3
-- **Texts:** 4 | **Dimensions:** 4
+- **Layouts:** 2 (Model: 20 entities, Layout1: 2 entities)
+- **Entities (all layouts):** 22
+- **Top entity types:** DIMENSION 5, INSERT 2, TEXT 2, LINE 1, CIRCLE 1, ARC 1, LWPOLYLINE 1, POLYLINE 1, ELLIPSE 1, SPLINE 1
+- **Block definitions:** 5 (+5 dimension blocks) | **Inserts:** 2 | **Attributes:** 3
+- **Texts:** 4 | **Dimensions:** 5
 
 ## File info
 
 | property | value |
 |---|---|
 | file | sample_drawing.dxf |
-| size_bytes | 82314 |
+| size_bytes | 83818 |
 | dxf_version | AC1032 |
 | release | R2018 |
 | encoding | cp1252 |
@@ -32,7 +32,7 @@
 | textsize | 2.5 |
 | source_type | DXF |
 | layer_count | 7 |
-| entity_count | 21 |
+| entity_count | 22 |
 | extents min | (-40.3, -200.375) |
 | extents max | (2400, 1249.26, 10) |
 
@@ -44,7 +44,7 @@
 | Defpoints | 7 | Continuous | -3 | yes | no | no | no | 0 |
 | WALLS | 1 | Continuous | -3 | yes | no | no | yes | 10 |
 | TEXT | 2 | Continuous | -3 | yes | no | no | yes | 3 |
-| DIMS | 3 | Continuous | -3 | yes | no | no | yes | 4 |
+| DIMS | 3 | Continuous | -3 | yes | no | no | yes | 5 |
 | HIDDEN | 4 | Continuous | -3 | no | no | no | yes | 1 |
 | FROZEN | 5 | Continuous | -3 | yes | yes | no | yes | 0 |
 
@@ -52,7 +52,7 @@
 
 | entity type | count |
 |---|---|
-| DIMENSION | 4 |
+| DIMENSION | 5 |
 | INSERT | 2 |
 | TEXT | 2 |
 | LINE | 1 |
@@ -74,7 +74,7 @@
 | layer | total | by type |
 |---|---|---|
 | 0 | 1 | INSERT 1 |
-| DIMS | 4 | DIMENSION 4 |
+| DIMS | 5 | DIMENSION 5 |
 | HIDDEN | 1 | POINT 1 |
 | TEXT | 3 | TEXT 1, MTEXT 1, INSERT 1 |
 | WALLS | 10 | LINE 1, CIRCLE 1, ARC 1, LWPOLYLINE 1, POLYLINE 1, ELLIPSE 1, SPLINE 1, HATCH 1, SOLID 1, 3DFACE 1 |
@@ -161,14 +161,17 @@
 |---|---|---|---|---|
 | 1 | CIRCLE | 0 | AE | center: (0, 0); radius: 5 |
 
-## Dimensions (4)
+## Dimensions (5)
 
-| where | handle | type | layer | measurement | displayed text | override | dimstyle | points |
-|---|---|---|---|---|---|---|---|---|
-| Model | B3 | linear/rotated | DIMS | 1000 | 100000 | <> | EZDXF | defpoint=(0, -100); defpoint2=(0, 0); defpoint3=(1000, 0); text_midpoint=(500, -99.775) |
-| Model | C2 | linear/rotated | DIMS | 500 | 50000 | <> | EZDXF | defpoint=(-40, 30); defpoint2=(0, 0); defpoint3=(300, 400); text_midpoint=(109.82, 230.135) |
-| Model | D1 | radius | DIMS | 250 | R25000 | <> | EZ_RADIUS | defpoint=(500, 500); defpoint4=(676.777, 676.777); text_midpoint=(677.395, 677.714) |
-| Model | DB | linear/rotated | DIMS | 500 | TYP. | TYP. | EZDXF | defpoint=(0, -200); defpoint2=(0, 0); defpoint3=(500, 0); text_midpoint=(250, -199.775) |
+Measurement is in drawing units (degrees for angular dimensions). Displayed text = measurement x DIMLFAC, rounded (DIMRND/DIMDEC), with R/Ø prefix and override text applied; "(computed)" means the dimension had no rendered block and the text was rebuilt.
+
+| where | handle | type | layer | measurement | DIMLFAC | displayed text | override | dimstyle | points |
+|---|---|---|---|---|---|---|---|---|---|
+| Model | B3 | linear/rotated | DIMS | 1000 | 1 | 1000 | <> | EZDXF | defpoint=(0, -100); defpoint2=(0, 0); defpoint3=(1000, 0); text_midpoint=(500, -99.775) |
+| Model | C2 | linear/rotated | DIMS | 500 | 1 | 500 | <> | EZDXF | defpoint=(-40, 30); defpoint2=(0, 0); defpoint3=(300, 400); text_midpoint=(109.82, 230.135) |
+| Model | D1 | radius | DIMS | 250 | 1 | R250 | <> | EZ_RADIUS | defpoint=(500, 500); defpoint4=(676.777, 676.777); text_midpoint=(677.219, 677.537) |
+| Model | DB | diameter | DIMS | 500 | 1 | Ø500 | <> | EZ_RADIUS | defpoint=(323.223, 676.777); defpoint4=(676.777, 323.223); text_midpoint=(677.537, 322.781) |
+| Model | E5 | linear/rotated | DIMS | 500 | 1 | TYP. | TYP. | EZDXF | defpoint=(0, -200); defpoint2=(0, 0); defpoint3=(500, 0); text_midpoint=(250, -199.775) |
 
 ## Geometry
 
@@ -256,7 +259,7 @@ Layout settings: paper_width = 420, paper_height = 297, paper_size = A3
 
 | handle | id | center | width | height | view center | view height | scale |
 |---|---|---|---|---|---|---|---|
-| EB | 3 | (150, 100) | 200 | 150 | (500, 500) | 1500 | 1:10 |
+| F5 | 3 | (150, 100) | 200 | 150 | (500, 500) | 1500 | 1:10 |
 
 ---
 *Generated offline by drawing2md 0.1.0 - no AI, no network. Coordinates rounded to 3 decimals.*

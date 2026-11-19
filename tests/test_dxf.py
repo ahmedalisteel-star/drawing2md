@@ -34,7 +34,7 @@ def test_counts(sample_dxf):
     for t in ("LINE", "CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "ELLIPSE", "SPLINE", "POINT",
               "HATCH", "SOLID", "3DFACE", "TEXT", "MTEXT", "INSERT", "DIMENSION"):
         assert counts.get(t, 0) >= 1, t
-    assert counts["DIMENSION"] == 4
+    assert counts["DIMENSION"] == 5
     assert model["layer_type_counts"]["WALLS"]["LINE"] == 1
 
 
@@ -84,10 +84,113 @@ def test_blocks_inserts_attributes(sample_dxf):
 def test_dimensions(sample_dxf):
     dims = _model(read_dxf(sample_dxf))["dimensions"]
     values = sorted(d["measurement"] for d in dims)
-    assert values == [250, 500, 500, 1000]
+    assert values == [250, 500, 500, 500, 1000]
     assert any(d["override_text"] == "TYP." for d in dims)
     assert any(d["dimtype"] == "radius" for d in dims)
     assert all("defpoint" in d["points"] for d in dims)
+
+
+def test_radius_and_diameter_displayed_text(sample_dxf):
+    dims = _model(read_dxf(sample_dxf))["dimensions"]
+    radius = next(d for d in dims if d["dimtype"] == "radius")
+    diameter = next(d for d in dims if d["dimtype"] == "diameter")
+    assert radius["measurement"] == 250 and radius["dimlfac"] == 1
+    assert radius["displayed_text"] == "R250"
+    assert diameter["measurement"] == 500
+    assert diameter["displayed_text"] == "Ø500"
+    # the text rebuilt from the dimstyle matches what ezdxf drew into the block
+    for d in dims:
+        assert d["displayed_text_source"] == "block"
+        assert d["computed_text"] == d["displayed_text"], d["handle"]
+
+
+def _dim_doc():
+    doc = ezdxf.new("R2018", setup=True)
+    return doc, doc.modelspace()
+
+
+@pytest.mark.parametrize("kind, add, override, expected", [
+    ("radius, DIMLFAC 100", "radius", {"dimlfac": 100}, "R25000"),
+    ("diameter, DIMLFAC 1", "diameter", {"dimlfac": 1}, "Ø500"),
+    ("radius, DIMLFAC 0.001 (mm -> m), 3 decimals", "radius",
+     {"dimlfac": 0.001, "dimdec": 3, "dimzin": 0}, "R0.250"),
+    ("radius, leading zero suppressed", "radius",
+     {"dimlfac": 0.001, "dimdec": 3, "dimzin": 4}, "R.250"),
+    ("diameter, DIMPOST suffix", "diameter", {"dimlfac": 1, "dimpost": "<> mm"}, "Ø500 mm"),
+    ("radius, DIMRND 100", "radius", {"dimlfac": 1, "dimrnd": 100}, "R300"),
+])
+def test_dimension_text_follows_dimstyle(kind, add, override, expected):
+    doc, msp = _dim_doc()
+    if add == "radius":
+        dim = msp.add_radius_dim(center=(0, 0), radius=250, angle=45, override=override)
+    else:
+        dim = msp.add_diameter_dim(center=(0, 0), radius=250, angle=45, override=override)
+    dim.render()
+    rec = dxf_reader.dimension_record(dim.dimension)
+    assert rec["computed_text"] == expected, kind
+    assert rec["displayed_text"] == expected, kind  # same as the rendered block
+    assert rec["dimlfac"] == override["dimlfac"]
+
+
+@pytest.mark.parametrize("override_text, expected", [
+    ("", "1000"),
+    ("<>", "1000"),
+    ("<> TYP.", "1000 TYP."),
+    ("2x <>", "2x 1000"),
+    ("SEE DETAIL", "SEE DETAIL"),
+    (" ", ""),
+])
+def test_override_text_placeholder(override_text, expected):
+    doc, msp = _dim_doc()
+    dim = msp.add_linear_dim(base=(0, -50), p1=(0, 0), p2=(1000, 0), text=override_text,
+                             override={"dimlfac": 1})
+    dim.render()
+    rec = dxf_reader.dimension_record(dim.dimension)
+    assert rec["computed_text"] == expected
+    if expected:
+        assert rec["displayed_text"] == expected
+
+
+def test_displayed_text_computed_when_block_missing():
+    doc, msp = _dim_doc()
+    # not rendered -> the DIMENSION has no geometry block, as in some exported DXFs
+    ov = msp.add_radius_dim(center=(0, 0), radius=12.3456, angle=0,
+                            override={"dimlfac": 1, "dimdec": 2, "dimzin": 8})
+    ov.commit()  # store the overrides (XDATA) without creating the geometry block
+    assert ov.dimension.get_geometry_block() is None
+    rec = dxf_reader.dimension_record(ov.dimension)
+    assert rec["displayed_text_source"] == "computed"
+    assert rec["displayed_text"] == "R12.35"
+
+
+def test_format_dimension_text_unit():
+    fmt = dxf_reader.format_dimension_text
+    base = dict(dxf_reader.DIMSTYLE_DEFAULTS)
+    assert fmt("radius", 250, "", {**base, "dimdec": 0}) == "R250"
+    assert fmt("diameter", 12.5, "", {**base, "dimdec": 2, "dimzin": 8}) == "Ø12.5"
+    assert fmt("linear/rotated", 1003.4, "", {**base, "dimrnd": 5, "dimdec": 2}) == "1005.00"
+    assert fmt("linear/rotated", 0.5, "", {**base, "dimdec": 3, "dimzin": 4, "dimdsep": 44}) == ",500"
+    assert fmt("angular (2-line)", 45.0, "", {**base, "dimadec": 1}) == "45.0°"
+    assert fmt("radius", 250, "%%c<>", {**base, "dimdec": 0}) == "ØR250"
+    assert fmt("radius", None, "", base) == ""
+    assert fmt("radius", 2.5, "", {**base, "dimdec": 0}) == "R3"  # half away from zero
+    assert fmt("radius", 250, "", {**base, "dimrnd": 100, "dimdec": 0}) == "R300"
+    # MTEXT codes in override text: \X splits text above/below the dimension line
+    assert fmt("linear/rotated", 900, "450 \\X(MIN)", base) == "450\n(MIN)"
+    assert fmt("linear/rotated", 900, "45\\U+00B0", base) == "45°"
+
+
+def test_angular_measurement_from_group_42_is_converted_to_degrees():
+    doc, msp = _dim_doc()
+    ov = msp.add_angular_dim_2l(base=(5, 5), line1=((0, 0), (10, 0)), line2=((0, 0), (10, 10)),
+                                override={"dimadec": 0})
+    ov.commit()
+    dim = ov.dimension
+    dim.dxf.actual_measurement = 0.7853981633974483  # AutoCAD stores radians here
+    rec = dxf_reader.dimension_record(dim)
+    assert rec["measurement"] == 45.0
+    assert rec["measurement_unit"] == "degrees"
+    assert rec["computed_text"] == "45°"
 
 
 def test_paper_space_layout(sample_dxf):
