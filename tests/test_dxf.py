@@ -117,7 +117,8 @@ def _dim_doc():
     ("radius, leading zero suppressed", "radius",
      {"dimlfac": 0.001, "dimdec": 3, "dimzin": 4}, "R.250"),
     ("diameter, DIMPOST suffix", "diameter", {"dimlfac": 1, "dimpost": "<> mm"}, "Ø500 mm"),
-    ("radius, DIMRND 100", "radius", {"dimlfac": 1, "dimrnd": 100}, "R300"),
+    # not an exact tie: ezdxf's renderer rounds ties half-to-even, AutoCAD half-up
+    ("radius, DIMRND 30", "radius", {"dimlfac": 1, "dimrnd": 30}, "R240"),
 ])
 def test_dimension_text_follows_dimstyle(kind, add, override, expected):
     doc, msp = _dim_doc()
